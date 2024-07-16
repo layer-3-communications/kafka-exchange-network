@@ -1,1 +1,1 @@
-packages: . ../kafka-exchange ../kafka-interchange
+packages: . ../kafka-exchange

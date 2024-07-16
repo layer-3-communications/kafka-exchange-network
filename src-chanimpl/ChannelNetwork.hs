@@ -1,4 +1,6 @@
 {-# language KindSignatures #-}
+{-# language LambdaCase #-}
+{-# language ScopedTypeVariables #-}
 
 module ChannelNetwork
   ( SendException
@@ -28,13 +30,14 @@ import Network.Unexceptional.Chunks (send)
 import qualified Data.Text as T
 import qualified Foreign.C.Error.Describe as Describe
 import qualified Network.Socket as N
+import qualified Network.Unexceptional as NU
 
 type SendException = Errno
 type ReceiveException = Errno
-type ConnectException = ()
+type ConnectException = Errno
 
 showsPrecConnectException :: Int -> ConnectException -> String -> String
-showsPrecConnectException = showsPrec
+showsPrecConnectException = showsPrecErrno
 
 showsPrecSendException :: Int -> SendException -> String -> String
 showsPrecSendException = showsPrecErrno
@@ -49,7 +52,8 @@ type M = IO
 
 type Resource = Socket
 
--- TODO: Make this not throw exceptions.
+-- TODO: Make this not throw exceptions when the broker's hostname
+-- cannot be resolved or when creating the socket fails.
 withConnection ::
      Text -- hostname
   -> Word16 -- port
@@ -61,6 +65,7 @@ withConnection host port handler = do
   info <- case minfo of
     info : _ -> pure info
     [] -> fail "Impossible: getAddrInfo cannot return empty list"
-  bracket (N.openSocket info) N.close $ \sock -> do
-    N.connect sock (N.addrAddress info)
-    handler (Right sock)
+  bracket (N.openSocket info) N.close $ \sock ->
+    NU.connect sock (N.addrAddress info) >>= \case
+      Right (_ :: ()) -> handler (Right sock)
+      Left e -> handler (Left e)
