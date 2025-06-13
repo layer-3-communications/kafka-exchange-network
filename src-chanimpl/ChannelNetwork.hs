@@ -1,3 +1,4 @@
+{-# language BangPatterns #-}
 {-# language KindSignatures #-}
 {-# language LambdaCase #-}
 {-# language ScopedTypeVariables #-}
@@ -8,6 +9,7 @@ module ChannelNetwork
   , ConnectException
   , Resource
   , M
+  , connect
   , withConnection
   , send
   , receiveExactly
@@ -52,6 +54,21 @@ type M = IO
 
 type Resource = Socket
 
+connect ::
+     Text -- hostname
+  -> Word16 -- port
+  -> M (Either ConnectException Resource)
+connect host !port = do
+  let hints = N.defaultHints { N.addrSocketType = N.Stream }
+  minfo <- N.getAddrInfo (Just hints) (Just (T.unpack host)) (Just (show port))
+  info <- case minfo of
+    info : _ -> pure info
+    [] -> fail "Impossible: getAddrInfo cannot return empty list"
+  sock <- N.openSocket info
+  NU.connect sock (N.addrAddress info) >>= \case
+    Right (_ :: ()) -> pure (Right sock)
+    Left e -> pure (Left e)
+
 -- TODO: Make this not throw exceptions when the broker's hostname
 -- cannot be resolved or when creating the socket fails.
 withConnection ::
@@ -59,7 +76,7 @@ withConnection ::
   -> Word16 -- port
   -> (Either ConnectException Resource -> M a)
   -> M a
-withConnection host port handler = do
+withConnection host !port handler = do
   let hints = N.defaultHints { N.addrSocketType = N.Stream }
   minfo <- N.getAddrInfo (Just hints) (Just (T.unpack host)) (Just (show port))
   info <- case minfo of
